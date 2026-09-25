@@ -38,6 +38,7 @@ suspend fun sync(context:Context,history:Boolean=false,background:Boolean=false,
  if(granted.intersect(readPermissions).isEmpty())throw SecurityException("Allow Health Connect access first")
  val prefs=context.getSharedPreferences("sync",0)
  val now=Instant.now();val hasHistory=granted.contains(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)
+ if(exportOnly&&history&&!hasHistory)throw SecurityException("Allow Health Connect history access to prepare a 90-day file. The 30-day option works without it.")
  val last=if(exportOnly||prefs.getInt("sleepFormat",0)<3)0L else prefs.getLong("checkpoint",0)
  val defaultStart=now.minus(29,ChronoUnit.DAYS)
  val start=if(history&&hasHistory)now.minus(90,ChronoUnit.DAYS) else if(last>0&&!history){val since=Instant.ofEpochMilli(last).minus(7,ChronoUnit.DAYS);if(hasHistory||since>defaultStart)since else defaultStart}else defaultStart
