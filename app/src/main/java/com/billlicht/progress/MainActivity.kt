@@ -32,8 +32,8 @@ class MainActivity:ComponentActivity(){
  }
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState)
   val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(Color.rgb(243,246,251));setPadding(16,20,16,0)}
-  root.addView(TextView(this).apply{text="Bill’s Progress Importer";textSize=22f;setTextColor(Color.rgb(23,35,61));setPadding(0,0,0,12)})
-  status=TextView(this).apply{text="1. Allow Health Connect access. 2. Sign in below with your dashboard’s ChatGPT account. 3. Sync your readings.";textSize=14f;setPadding(0,0,0,12)};root.addView(status)
+  root.addView(TextView(this).apply{text="Bill’s Progress Importer v2";textSize=22f;setTextColor(Color.rgb(23,35,61));setPadding(0,0,0,12)})
+  status=TextView(this).apply{text="Production dashboard. 1. Allow Health Connect access. 2. Sign in below with your dashboard’s ChatGPT account. 3. Sync your readings.";textSize=14f;setPadding(0,0,0,12)};root.addView(status)
   val controls=LinearLayout(this)
   controls.addView(Button(this).apply{text="Allow access";setOnClickListener{allowAccess()}},LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
   syncButton=Button(this).apply{text="Sync now";setOnClickListener{runSync(false)}};controls.addView(syncButton,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f));root.addView(controls)

@@ -38,7 +38,7 @@ suspend fun sync(context:Context,history:Boolean=false,background:Boolean=false)
  if(granted.intersect(readPermissions).isEmpty())throw SecurityException("Allow Health Connect access first")
  val prefs=context.getSharedPreferences("sync",0)
  val now=Instant.now();val hasHistory=granted.contains(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)
- val last=if(prefs.getInt("sleepFormat",0)<2)0L else prefs.getLong("checkpoint",0)
+ val last=if(prefs.getInt("sleepFormat",0)<3)0L else prefs.getLong("checkpoint",0)
  val defaultStart=now.minus(29,ChronoUnit.DAYS)
  val start=if(history&&hasHistory)now.minus(90,ChronoUnit.DAYS) else if(last>0&&!history){val since=Instant.ofEpochMilli(last).minus(7,ChronoUnit.DAYS);if(hasHistory||since>defaultStart)since else defaultStart}else defaultStart
  val filter=TimeRangeFilter.between(start,now)
@@ -55,7 +55,7 @@ suspend fun sync(context:Context,history:Boolean=false,background:Boolean=false)
    conn.inputStream.use{it.readBytes()};processed+=items.length()
   }finally{conn.disconnect()}
  }
- fun item(id:String,metric:String,time:Instant,value:Double,source:String,value2:Double?=null)=JSONObject().put("id",id).put("metric",metric).put("time",time.toString()).put("value",value).put("source",source).apply{if(value2!=null)put("value2",value2)}
+ fun item(id:String,metric:String,time:Instant,value:Double,source:String,value2:Double?=null,startTime:Instant?=null,endTime:Instant?=null)=JSONObject().put("id",id).put("metric",metric).put("time",time.toString()).put("value",value).put("source",source).apply{if(value2!=null)put("value2",value2);if(startTime!=null)put("start_time",startTime.toString());if(endTime!=null)put("end_time",endTime.toString())}
  suspend fun <T:Record> raw(type:KClass<T>,convert:(T)->JSONObject?){if(!granted.contains(HealthPermission.getReadPermission(type)))return
   var token:String?=null
   do{val result=hc.readRecords(ReadRecordsRequest(recordType=type,timeRangeFilter=filter,pageSize=500,pageToken=token));val batch=JSONArray();counts[type]=(counts[type]?:0)+result.records.size;result.records.forEach{convert(it)?.let(batch::put)};upload(batch);token=result.pageToken}while(token!=null)
@@ -78,8 +78,27 @@ suspend fun sync(context:Context,history:Boolean=false,background:Boolean=false)
   val selected=sessions.filter{r->r.stages.isNotEmpty()||sessions.none{other->other.stages.isNotEmpty()&&other.startTime<r.endTime&&other.endTime>r.startTime}}
   val intervals=selected.flatMap{r->if(r.stages.isEmpty())listOf(SleepInterval(r.startTime,r.endTime)) else r.stages.filter{it.stage in setOf(SleepSessionRecord.STAGE_TYPE_SLEEPING,SleepSessionRecord.STAGE_TYPE_LIGHT,SleepSessionRecord.STAGE_TYPE_DEEP,SleepSessionRecord.STAGE_TYPE_REM)}.map{SleepInterval(it.startTime,it.endTime)}}
   val hours=sleepHours(intervals)
-  if(hours>0){val origins=selected.map(::source).distinct().joinToString(", ");val note=if(selected.any{it.stages.isEmpty()})" (includes session duration without stages)" else ""
-   sleeps.put(item("hc:sleep-day:$wakeDate","sleep",sessions.maxOf{it.endTime},hours,(origins+note).take(150)))}
+  if(hours>0){
+   val origins=selected.map(::source).distinct().joinToString(", ")
+   val note=if(selected.any{it.stages.isEmpty()})" (includes session duration without stages)" else ""
+   val wake=sessions.maxOf{it.endTime}
+   val bedtime=sessions.minOf{it.startTime}
+   sleeps.put(item("hc:sleep-day:$wakeDate","sleep",wake,hours,(origins+note).take(150),startTime=bedtime,endTime=wake))
+   fun stageHours(stage:Int)=sleepHours(selected.flatMap{r->r.stages.filter{it.stage==stage}.map{SleepInterval(it.startTime,it.endTime)}})
+   val light=stageHours(SleepSessionRecord.STAGE_TYPE_LIGHT)
+   val deep=stageHours(SleepSessionRecord.STAGE_TYPE_DEEP)
+   val rem=stageHours(SleepSessionRecord.STAGE_TYPE_REM)
+   val awake=stageHours(SleepSessionRecord.STAGE_TYPE_AWAKE)+stageHours(SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED)
+   if(light>0)sleeps.put(item("hc:sleep-light-day:$wakeDate","sleep_light",wake,light,origins.take(150)))
+   if(deep>0)sleeps.put(item("hc:sleep-deep-day:$wakeDate","sleep_deep",wake,deep,origins.take(150)))
+   if(rem>0)sleeps.put(item("hc:sleep-rem-day:$wakeDate","sleep_rem",wake,rem,origins.take(150)))
+   if(awake>0)sleeps.put(item("hc:sleep-awake-day:$wakeDate","sleep_awake",wake,awake,origins.take(150)))
+   val inBed=sleepHours(selected.map{SleepInterval(it.startTime,it.endTime)})
+   if(inBed>0){
+    sleeps.put(item("hc:sleep-inbed-day:$wakeDate","sleep_in_bed",wake,inBed,origins.take(150)))
+    sleeps.put(item("hc:sleep-efficiency-day:$wakeDate","sleep_efficiency",wake,(hours/inBed*100.0).coerceIn(0.0,100.0),origins.take(150)))
+   }
+  }
  }
  upload(sleeps)
  // Keep Health Connect's deduplication for activity totals.
@@ -103,5 +122,5 @@ suspend fun sync(context:Context,history:Boolean=false,background:Boolean=false)
  upload(JSONArray(),report)
  fun summary(type:KClass<out Record>)=if(!granted.contains(HealthPermission.getReadPermission(type)))"access not granted" else "${counts[type]?:0} source records"
  val result="Synced $processed readings at ${java.time.ZonedDateTime.now().toLocalTime().truncatedTo(ChronoUnit.MINUTES)}.\nLean mass: ${summary(LeanBodyMassRecord::class)}; body water: ${summary(BodyWaterMassRecord::class)}; sleep: ${summary(SleepSessionRecord::class)}."
- prefs.edit().putInt("sleepFormat",2).putLong("checkpoint",now.toEpochMilli()).putString("status",result).apply();result
+ prefs.edit().putInt("sleepFormat",3).putLong("checkpoint",now.toEpochMilli()).putString("status",result).apply();result
 }
