@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, sleep-v2]
+    branches: [main, sleep-v2, passkey-browser-upload]
   workflow_dispatch:
 
 permissions:
@@ -36,6 +36,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: bill-progress-importer-production-v0.2.0
+          name: bill-progress-importer-production-v0.2.1
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
