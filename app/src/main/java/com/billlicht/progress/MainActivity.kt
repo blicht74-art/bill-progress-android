@@ -38,8 +38,9 @@ class MainActivity:ComponentActivity(){
    contentResolver.openOutputStream(uri)?.use{it.write(data.toByteArray(Charsets.UTF_8))}
     ?:throw IllegalStateException("Could not open the selected file")
    status.text="File saved. In Chrome, open Connections → Import readings JSON and select the file you just saved."
-   val intent=Intent(Intent.ACTION_VIEW,Uri.parse(DASHBOARD)).apply{addCategory(Intent.CATEGORY_BROWSABLE);setPackage("com.android.chrome")}
-   try{startActivity(intent)}catch(_:Exception){startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(DASHBOARD)).addCategory(Intent.CATEGORY_BROWSABLE))}
+   val importPage="$DASHBOARD/?tab=connections#import-readings"
+   val intent=Intent(Intent.ACTION_VIEW,Uri.parse(importPage)).apply{addCategory(Intent.CATEGORY_BROWSABLE);setPackage("com.android.chrome")}
+   try{startActivity(intent)}catch(_:Exception){startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(importPage)).addCategory(Intent.CATEGORY_BROWSABLE))}
   }catch(e:Exception){status.text="Could not save the file: ${e.message?:"choose another location"}"}
  }
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState)
