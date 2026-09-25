@@ -31,21 +31,24 @@ class SyncWorker(context:Context,params:WorkerParameters):CoroutineWorker(contex
  override suspend fun doWork():Result=try{sync(applicationContext,false,true);Result.success()}catch(e:SecurityException){applicationContext.getSharedPreferences("sync",0).edit().putString("status","Open importer: access or sign-in needs attention.").apply();Result.failure()}catch(e:Exception){applicationContext.getSharedPreferences("sync",0).edit().putString("status","Sync delayed. Open the importer to check your connection.").apply();Result.retry()}
 }
 
-suspend fun sync(context:Context,history:Boolean=false,background:Boolean=false):String=withContext(Dispatchers.IO){
+suspend fun sync(context:Context,history:Boolean=false,background:Boolean=false,exportOnly:Boolean=false):String=withContext(Dispatchers.IO){
  val hc=HealthConnectClient.getOrCreate(context)
  val granted=hc.permissionController.getGrantedPermissions()
  if(background&&!granted.contains(HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND))throw SecurityException("Background access is not granted")
  if(granted.intersect(readPermissions).isEmpty())throw SecurityException("Allow Health Connect access first")
  val prefs=context.getSharedPreferences("sync",0)
  val now=Instant.now();val hasHistory=granted.contains(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)
- val last=if(prefs.getInt("sleepFormat",0)<3)0L else prefs.getLong("checkpoint",0)
+ val last=if(exportOnly||prefs.getInt("sleepFormat",0)<3)0L else prefs.getLong("checkpoint",0)
  val defaultStart=now.minus(29,ChronoUnit.DAYS)
  val start=if(history&&hasHistory)now.minus(90,ChronoUnit.DAYS) else if(last>0&&!history){val since=Instant.ofEpochMilli(last).minus(7,ChronoUnit.DAYS);if(hasHistory||since>defaultStart)since else defaultStart}else defaultStart
  val filter=TimeRangeFilter.between(start,now)
  var processed=0
+ val exported=JSONArray()
+ var exportedReport:JSONObject?=null
  val counts=mutableMapOf<KClass<out Record>,Int>()
  fun upload(items:JSONArray,report:JSONObject?=null){if(items.length()==0&&report==null)return
-  if(items.length()>500){for(offset in 0 until items.length() step 500){val part=JSONArray();for(i in offset until minOf(offset+500,items.length()))part.put(items.getJSONObject(i));upload(part)};return}
+ if(items.length()>500){for(offset in 0 until items.length() step 500){val part=JSONArray();for(i in offset until minOf(offset+500,items.length()))part.put(items.getJSONObject(i));upload(part)};return}
+  if(exportOnly){for(i in 0 until items.length())exported.put(items.getJSONObject(i));if(report!=null)exportedReport=report;return}
   val cookies=CookieManager.getInstance().getCookie(DASHBOARD) ?: throw SecurityException("Sign in to your dashboard in this app first")
   val conn=URL("$DASHBOARD/api/readings").openConnection() as HttpURLConnection
   try{conn.requestMethod="POST";conn.instanceFollowRedirects=false;conn.connectTimeout=20000;conn.readTimeout=30000;conn.doOutput=true;conn.setRequestProperty("Content-Type","application/json");conn.setRequestProperty("Cookie",cookies);conn.outputStream.use{it.write(JSONObject().put("records",items).apply{if(report!=null){put("diagnostics",report);put("replaceCalendarSleep",granted.contains(HealthPermission.getReadPermission(SleepSessionRecord::class)))}}.toString().toByteArray())}
@@ -120,6 +123,13 @@ suspend fun sync(context:Context,history:Boolean=false,background:Boolean=false)
  fun diagnostic(type:KClass<out Record>)=JSONObject().put("granted",granted.contains(HealthPermission.getReadPermission(type))).put("count",counts[type]?:0)
  val report=JSONObject().put("start",start.toString()).put("end",now.toString()).put("leanmass",diagnostic(LeanBodyMassRecord::class)).put("bodywater",diagnostic(BodyWaterMassRecord::class)).put("sleep",diagnostic(SleepSessionRecord::class))
  upload(JSONArray(),report)
+ if(exportOnly){
+  if(exported.length()==0)throw IllegalStateException("Health Connect returned no readings in this period")
+  val document=JSONObject().put("version",1).put("records",exported).put("diagnostics",exportedReport)
+  val serialized=document.toString()
+  if(serialized.toByteArray(Charsets.UTF_8).size>9_000_000)throw IllegalStateException("Export is over 9 MB. Prepare the 30-day file instead")
+  return@withContext serialized
+ }
  fun summary(type:KClass<out Record>)=if(!granted.contains(HealthPermission.getReadPermission(type)))"access not granted" else "${counts[type]?:0} source records"
  val result="Synced $processed readings at ${java.time.ZonedDateTime.now().toLocalTime().truncatedTo(ChronoUnit.MINUTES)}.\nLean mass: ${summary(LeanBodyMassRecord::class)}; body water: ${summary(BodyWaterMassRecord::class)}; sleep: ${summary(SleepSessionRecord::class)}."
  prefs.edit().putInt("sleepFormat",3).putLong("checkpoint",now.toEpochMilli()).putString("status",result).apply();result
