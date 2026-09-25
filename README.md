@@ -1,6 +1,8 @@
-# Bill’s Progress Importer
+# Bill’s Progress Importer v2
 
 Personal Android companion for the owner-private Bill’s Progress Site. Reads approved Health Connect data and uploads normalized measurements over HTTPS using the dashboard session established inside the app. No Health Connect writes, analytics or advertising.
+
+This v0.2.0 build uses application ID `com.billlicht.progress.v2` and the production URL `https://bill-health-progress.blicht74.chatgpt.site`. It can install beside the v0.1.3 production importer and the separate TEST importer. Before enabling v2 automatic sync, open v0.1.3 and tap **Stop auto sync**. Then allow Health Connect access and sign in inside v2. Both importers use stable Health Connect record IDs, so rerunning history updates matching production readings. Never enter the TEST API key in this app.
 
 ## Use
 
@@ -14,8 +16,10 @@ Imports up to 29 complete Eastern calendar days initially, or 90 days when histo
 
 Weight, lean body mass and body water mass: pounds. Body fat: percentage. BP: systolic and diastolic mmHg. Exercise duration: elapsed minutes. Steps, distance, sleep duration and mean heart rate: Health Connect aggregates assigned to America/New_York calendar dates, respecting available platform deduplication. Sleep represents sleep grouped by its Eastern wake date; mean heart rate is not resting heart rate. Aggregate records identify HealthConnect.aggregate as the source because they can combine apps. No skeletal muscle metric is inferred from lean body mass.
 
+Sleep uploads the existing `sleep` duration metric plus light, deep, REM, awake, time in bed and efficiency when source stages exist. Bedtime and wake time are attached to the `sleep` reading. Missing stages remain absent rather than being estimated.
+
 ## Build
 
 JDK 17, Android SDK platform 36 and build-tools 35, Gradle 8.13. Run `gradle :app:assembleDebug` from this directory with ANDROID_HOME set. Production distribution would require release signing and a tested sign-in flow. This repository intentionally excludes local signing keys, Gradle cache, SDK files, build output and session cookies.
 
-Every push to `main` also runs the **Build Android APK** workflow. When it succeeds, open the workflow run in GitHub Actions and download the `bill-progress-importer-v0.1.3` artifact.
+Pushes to `main` or `sleep-v2` run the **Build Android APK** workflow. Download the `bill-progress-importer-production-v0.2.0` artifact from its successful run.
